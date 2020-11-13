@@ -28,15 +28,16 @@ namespace WpfApp
 
         private void OnLoaded(Object sender, RoutedEventArgs e)
         {
-            if (!camera.Init())
+            if (!camera.Init(out String errMsg))
             {
-                MessageBox.Show("未检测到相机");
+                MessageBox.Show(errMsg);
                 return;
             }
 
             this.Title = camera.CameraName;
 
-            camera.Play();
+            if (!camera.Play(out errMsg))
+                MessageBox.Show(errMsg);
         }
 
         protected override void OnClosed(EventArgs e)
@@ -47,27 +48,32 @@ namespace WpfApp
 
         private void OnStartEvfClick(object sender, RoutedEventArgs e)
         {
-            camera.Play();
+            if (!camera.Play(out String errMsg))
+                MessageBox.Show(errMsg);
         }
 
         private void OnEndEvfClick(object sender, RoutedEventArgs e)
         {
-            camera.Stop();
+            if (!camera.Stop(out String errMsg))
+                MessageBox.Show(errMsg);
         }
 
         private void OnTakePictureClick(object sender, RoutedEventArgs e)
         {
-            camera.TakePicture();
+            if (!camera.TakePicture(out String errMsg))
+                MessageBox.Show(errMsg);
         }
 
         private void OnBeginRecordClick(object sender, RoutedEventArgs e)
         {
-            camera.BeginRecord();
+            if (!camera.BeginRecord(out String errMsg))
+                MessageBox.Show(errMsg);
         }
 
         private void OnEndRecordClick(object sender, RoutedEventArgs e)
         {
-            camera.EndRecord();
+            if (!camera.EndRecord(out String errMsg))
+                MessageBox.Show(errMsg);
         }
     }
 }

@@ -11,7 +11,7 @@ using System.Windows.Media.Imaging;
 
 namespace WpfApp
 {
-    public sealed class Camera : IDisposable
+    public sealed class Camera : ICamera
     {
         static Camera()
         {
@@ -28,25 +28,32 @@ namespace WpfApp
 
         #region 公开方法
 
-        public Boolean Init()
+        public Boolean Init(out String errMsg)
         {
+            errMsg = null;
+
             lock (sdkLock)
             {
                 var err = InitCamera();
                 var ret = err == EDSDK.EDS_ERR_OK;
 
                 if (!ret)
+                {
+                    errMsg = "未检测到相机，错误代码：" + err;
                     Close();
+                }
 
                 return ret;
             }
         }
 
-        public Boolean Play()
+        public Boolean Play(out String errMsg)
         {
+            errMsg = null;
+
             if (camera == IntPtr.Zero)
             {
-                if (!Init())
+                if (!Init(out errMsg))
                     return false;
                 else
                     Thread.Sleep(500);
@@ -71,14 +78,18 @@ namespace WpfApp
                 thread_evf.SetApartmentState(ApartmentState.STA);
                 thread_evf.Start();
             }
+            else
+                errMsg = "开启实时图像模式失败，错误代码：" + err;
 
             return ret;
         }
 
-        public Boolean Stop()
+        public Boolean Stop(out String errMsg)
         {
+            errMsg = null;
+
             if (camera == IntPtr.Zero)
-                return false;
+                return true;
 
             var err = EDSDK.EDS_ERR_OK;
 
@@ -91,13 +102,21 @@ namespace WpfApp
                     err = EDSDK.EdsSetPropertyData(camera, EDSDK.PropID_Evf_OutputDevice, 0, deviceSize, EvfOutputDevice & ~EDSDK.EvfOutputDevice_PC);
             }
 
+            if(err != EDSDK.EDS_ERR_OK)
+                errMsg = "关闭实时图像模式失败，错误代码：" + err;
+
             return err == EDSDK.EDS_ERR_OK;
         }
 
-        public Boolean TakePicture()
+        public Boolean TakePicture(out String errMsg)
         {
+            errMsg = null;
+
             if (camera == IntPtr.Zero)
+            {
+                errMsg = "未检测到相机";
                 return false;
+            }
 
             lock (sdkLock)
             {
@@ -112,19 +131,27 @@ namespace WpfApp
                         err = EDSDK.EdsSendCommand(camera, EDSDK.CameraCommand_PressShutterButton, (Int32)EDSDK.EdsShutterButton.CameraCommand_ShutterButton_OFF);
                 }
 
+                if (err != EDSDK.EDS_ERR_OK)
+                    errMsg = "拍照失败，错误代码：" + err;
+
                 return err == EDSDK.EDS_ERR_OK;
             }
         }
 
-        public Boolean BeginRecord()
+        public Boolean BeginRecord(out String errMsg)
         {
+            errMsg = null;
+
             if (camera == IntPtr.Zero)
+            {
+                errMsg = "未检测到相机";
                 return false;
+            }
 
             if (videoFileWriter != null)
                 return true;
 
-            if ((EvfOutputDevice & EDSDK.EvfOutputDevice_PC) == 0 && !Play())
+            if ((EvfOutputDevice & EDSDK.EvfOutputDevice_PC) == 0 && !Play(out errMsg))
                 return false;
 
             videoFileWriter = new VideoFileWriter();
@@ -132,10 +159,15 @@ namespace WpfApp
             return true;
         }
 
-        public Boolean EndRecord()
+        public Boolean EndRecord(out String errMsg)
         {
+            errMsg = null;
+
             if (camera == IntPtr.Zero)
+            {
+                errMsg = "未检测到相机";
                 return false;
+            }
 
             if (videoFileWriter == null)
                 return true;
@@ -451,10 +483,10 @@ namespace WpfApp
         private void Close(Boolean isDisposed = false)
         {
             if ((EvfOutputDevice & EDSDK.EvfOutputDevice_PC) != 0)
-                Stop();
+                Stop(out _);
 
             if (videoFileWriter != null)
-                EndRecord();
+                EndRecord(out _);
 
             if (isSessionOpened)
             {
@@ -489,7 +521,7 @@ namespace WpfApp
             var handle = GCHandle.FromIntPtr(inContext);
             var ins = (Camera)handle.Target;
 
-            ins.context.Post(n => { ins.Play(); }, null);
+            ins.context.Post(n => { ins.Play(out _); }, null);
 
             return EDSDK.EDS_ERR_OK;
         }
