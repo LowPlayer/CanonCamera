@@ -17,10 +17,10 @@ namespace WpfApp
 
             camera = new Camera
             {
-                ImageSourceChanged = n => { this.img.Source = n; },
-                ImageFolder = Path.Combine(Environment.CurrentDirectory, "Images"),
-                VideoFolder = Path.Combine(Environment.CurrentDirectory, "Videos"),
-                NamingRulesFunc = () => (DateTime.Now - new DateTime(1970, 1, 1)).TotalMilliseconds.ToString("0")
+                ImageSourceChanged = n => { this.img.Source = n; },     // 更新图像源
+                ImageFolder = Path.Combine(Environment.CurrentDirectory, "Images"),     // 图像保存路径
+                VideoFolder = Path.Combine(Environment.CurrentDirectory, "Videos"),     // 录像保存路径
+                NamingRulesFunc = () => (DateTime.Now - new DateTime(1970, 1, 1)).TotalMilliseconds.ToString("0")       // 新文件命名方式
             };
 
             this.Loaded += OnLoaded;
@@ -34,6 +34,7 @@ namespace WpfApp
                 return;
             }
 
+            // 获取相机名称
             this.Title = camera.CameraName;
 
             if (!camera.Play(out errMsg))

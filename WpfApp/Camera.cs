@@ -273,6 +273,7 @@ namespace WpfApp
 
         private void ReadEvf()
         {
+            // 等待实时图像传输开启
             SpinWait.SpinUntil(() => (EvfOutputDevice & EDSDK.EvfOutputDevice_PC) != 0, 5000);
 
             IntPtr stream = IntPtr.Zero;
@@ -285,49 +286,54 @@ namespace WpfApp
 
             var err = EDSDK.EDS_ERR_OK;
 
+            // 当实时图像传输开启时，不断地循环
             while ((EvfOutputDevice & EDSDK.EvfOutputDevice_PC) != 0)
             {
                 lock (sdkLock)
                 {
-                    err = EDSDK.EdsCreateMemoryStream(maxLength, out stream);
+                    err = EDSDK.EdsCreateMemoryStream(maxLength, out stream);       // 创建用于保存图像的流对象
 
                     if (err == EDSDK.EDS_ERR_OK)
                     {
-                        err = EDSDK.EdsCreateEvfImageRef(stream, out evfImage);
+                        err = EDSDK.EdsCreateEvfImageRef(stream, out evfImage);     // 创建evf图像对象
 
                         if (err == EDSDK.EDS_ERR_OK)
-                            err = EDSDK.EdsDownloadEvfImage(camera, evfImage);
+                            err = EDSDK.EdsDownloadEvfImage(camera, evfImage);      // 从相机下载evf图像
 
                         if (err == EDSDK.EDS_ERR_OK)
-                            err = EDSDK.EdsGetPointer(stream, out evfStream);
+                            err = EDSDK.EdsGetPointer(stream, out evfStream);       // 获取流对象的流地址
 
                         if (err == EDSDK.EDS_ERR_OK)
-                            err = EDSDK.EdsGetLength(stream, out length);
+                            err = EDSDK.EdsGetLength(stream, out length);           // 获取流的长度
                     }
                 }
 
                 if (err == EDSDK.EDS_ERR_OK)
                 {
-                    Marshal.Copy(evfStream, data, 0, (Int32)length);
+                    Marshal.Copy(evfStream, data, 0, (Int32)length);        // 从流地址拷贝一份到字节数组，再解码获取图像（如果可以写一个从指针解码图像，可以优化此步骤）
 
-                    using (var bmp = (Bitmap)imageConverter.ConvertFrom(data))
+                    using (var bmp = (Bitmap)imageConverter.ConvertFrom(data))      // 解码获取Bitmap
                     {
-                        if (this.Bitmap == null || this.width != bmp.Width || this.height != bmp.Height)
+                        if (this.WriteableBitmap == null || this.width != bmp.Width || this.height != bmp.Height)
                         {
+                            // 第一次或宽高不对应时创建WriteableBitmap对象
                             this.width = bmp.Width;
                             this.height = bmp.Height;
 
+                            // 通过线程同步上下文切换到主线程
                             context.Send(n =>
                             {
-                                Bitmap = new WriteableBitmap(this.width, this.height, 96, 96, PixelFormats.Bgr24, null);
-                                backBuffer = Bitmap.BackBuffer;
-                                this.stride = Bitmap.BackBufferStride;
-                                this.length = this.stride * this.height;
+                                WriteableBitmap = new WriteableBitmap(this.width, this.height, 96, 96, PixelFormats.Bgr24, null);
+                                backBuffer = WriteableBitmap.BackBuffer;        // 保存后台缓冲区指针
+                                this.stride = WriteableBitmap.BackBufferStride; // 单行像素数据中的字节数
+                                this.length = this.stride * this.height;        // 像素数据的总字节数
                             }, null);
                         }
 
+                        // 获取Bitmap的像素数据指针
                         var bmpData = bmp.LockBits(new Rectangle(bmpStartPoint, bmp.Size), System.Drawing.Imaging.ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
 
+                        // 将Bitmap的像素数据拷贝到WriteableBitmap
                         if (this.stride == bmpData.Stride)
                             Memcpy(backBuffer, bmpData.Scan0, this.length);
                         else
@@ -366,6 +372,7 @@ namespace WpfApp
                                     startRecordTime = Environment.TickCount;
                                 }
 
+                                // 写入视频帧时传入时间戳，否则录像时长将对不上
                                 videoFileWriter.WriteVideoFrame(bmp, TimeSpan.FromMilliseconds(Environment.TickCount - startRecordTime));
                             }
                         }
@@ -391,7 +398,8 @@ namespace WpfApp
                 }
             }
 
-            context.Send(n => { Bitmap = null; }, null);
+            // 停止显示图像
+            context.Send(n => { WriteableBitmap = null; }, null);
         }
 
         private void OnRender(Object sender, EventArgs e)
@@ -406,7 +414,7 @@ namespace WpfApp
             if (Interlocked.CompareExchange(ref newFrame, 0, 1) != 1)
                 return;
 
-            var bmp = this.Bitmap;
+            var bmp = this.WriteableBitmap;
             bmp.Lock();
             bmp.AddDirtyRect(new Int32Rect(0, 0, bmp.PixelWidth, bmp.PixelHeight));
             bmp.Unlock();
@@ -699,21 +707,21 @@ namespace WpfApp
         private SynchronizationContext context = SynchronizationContext.Current;
         private ImageConverter imageConverter = new ImageConverter();
 
-        private WriteableBitmap bitmap;
-        private WriteableBitmap Bitmap
+        private WriteableBitmap writeableBitmap;
+        private WriteableBitmap WriteableBitmap
         {
-            get => this.bitmap;
+            get => this.writeableBitmap;
             set
             {
-                if (this.bitmap == value)
+                if (this.writeableBitmap == value)
                     return;
 
-                if (this.bitmap == null)
+                if (this.writeableBitmap == null)
                     CompositionTarget.Rendering += OnRender;
                 else if (value == null)
                     CompositionTarget.Rendering -= OnRender;
 
-                this.bitmap = value;
+                this.writeableBitmap = value;
                 this.ImageSourceChanged?.Invoke(value);
             }
         }
